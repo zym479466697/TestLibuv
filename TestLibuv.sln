@@ -1,0 +1,32 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 11.00
+# Visual Studio 2010
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "libuv", "libuv\libuv.vcxproj", "{33066374-88CB-CB8D-15DA-61032886329A}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "TestServer", "TestServer\TestServer.vcxproj", "{ABEA1F68-70DC-428E-84AD-3B3B0B80A59A}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "TestClient", "TestClient\TestClient.vcxproj", "{1363A163-E874-4C73-96F7-1E0F05ED498A}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Win32 = Debug|Win32
+		Release|Win32 = Release|Win32
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{33066374-88CB-CB8D-15DA-61032886329A}.Debug|Win32.ActiveCfg = Debug|Win32
+		{33066374-88CB-CB8D-15DA-61032886329A}.Debug|Win32.Build.0 = Debug|Win32
+		{33066374-88CB-CB8D-15DA-61032886329A}.Release|Win32.ActiveCfg = Release|Win32
+		{33066374-88CB-CB8D-15DA-61032886329A}.Release|Win32.Build.0 = Release|Win32
+		{ABEA1F68-70DC-428E-84AD-3B3B0B80A59A}.Debug|Win32.ActiveCfg = Debug|Win32
+		{ABEA1F68-70DC-428E-84AD-3B3B0B80A59A}.Debug|Win32.Build.0 = Debug|Win32
+		{ABEA1F68-70DC-428E-84AD-3B3B0B80A59A}.Release|Win32.ActiveCfg = Release|Win32
+		{ABEA1F68-70DC-428E-84AD-3B3B0B80A59A}.Release|Win32.Build.0 = Release|Win32
+		{1363A163-E874-4C73-96F7-1E0F05ED498A}.Debug|Win32.ActiveCfg = Debug|Win32
+		{1363A163-E874-4C73-96F7-1E0F05ED498A}.Debug|Win32.Build.0 = Debug|Win32
+		{1363A163-E874-4C73-96F7-1E0F05ED498A}.Release|Win32.ActiveCfg = Release|Win32
+		{1363A163-E874-4C73-96F7-1E0F05ED498A}.Release|Win32.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal

@@ -1,0 +1,15 @@
+ipch
+bin/
+*.vcxproj.user
+*.csproj.user
+*.log
+*.aps
+*.APS
+**/ipch
+*.suo
+*.sdf
+*.opensdf
+**/obj
+/Release
+*/Debug
+*/Release
