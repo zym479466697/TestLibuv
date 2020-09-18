@@ -33,11 +33,13 @@ struct	UvEvent
 	{
 		_buff = nullptr;
 		_size = 0;
+		_data = nullptr;
 	}
 	UV_EVENT_TYPE type;
 	char* _buff;
 	int _size;
 	std::vector<int> _list;
+	void* _data;
 };
 
 inline UvEvent* CreateUvEvent(UV_EVENT_TYPE type, const char* pBuff = nullptr, int size = 0)
@@ -58,6 +60,7 @@ inline void FreeUvEvent(UvEvent* _event)
 		free(_event->_buff);
 		_event->_buff = nullptr;
 		_event->_size = 0;
+		_event->_data = nullptr;
 	}
 	delete _event;
 	_event = nullptr;

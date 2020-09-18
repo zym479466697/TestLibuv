@@ -2,6 +2,8 @@
 //
 #include "stdafx.h"
 #include "TcpClient.h"
+#include "Looper.h"
+
 #pragma comment(lib, "libuv.lib")
 #pragma comment(lib,"ws2_32.lib")
 #pragma comment(lib, "IPHLPAPI.lib")
@@ -60,7 +62,7 @@ std::string PacketData(int clientId, const char* data, int dataSize)
 void CloseCB(int clientid, void* userdata)
 {
 	LOGI("cliend %d close", clientid);
-	uv::TCPClient* client = (uv::TCPClient*)userdata;
+	uv::CTcpClient* client = (uv::CTcpClient*)userdata;
 	client->Close();
 }
 
@@ -75,8 +77,8 @@ void ReadCB(NetPacket* pNetPacket, void* userdata)
 //连接回调
 void ConnectCB(int status, void* userdata)
 {
-	uv::TCPClient* pClient = (uv::TCPClient*)userdata;
-	if(status == uv::TCPClient::CONNECT_FINISH)
+	uv::CTcpClient* pClient = (uv::CTcpClient*)userdata;
+	if(status == uv::CTcpClient::CONNECT_FINISH)
 	{
 		LOGI("client(%p) connect succeed.", pClient);
 	}
@@ -84,27 +86,29 @@ void ConnectCB(int status, void* userdata)
 
 int call_time = 0;
 
-int _tmain(int argc, _TCHAR* argv[])
+void Func()
 {
 	const int clientsize = 20;
 	std::string strServerIp = "127.0.0.1";
 	const int port = 6666;
-	
-	uv::TCPClient** pClients = new uv::TCPClient*[clientsize];
+
+	uv::CLooper looper;
+	looper.InitLooper();
+
+	uv::CTcpClient** pClients = new uv::CTcpClient*[clientsize];
 
 	for (int i = 0; i < clientsize; ++i) {
-		pClients[i] = new uv::TCPClient(DEF_PACK_HEAD_FLAG);
+		pClients[i] = new uv::CTcpClient(DEF_PACK_HEAD_FLAG);
+		pClients[i]->Init(&looper);
 		pClients[i]->SetRecvCB(ReadCB, pClients[i]);
 		pClients[i]->SetClosedCB(CloseCB, pClients[i]);
 		pClients[i]->SetConnectCB(ConnectCB, pClients[i]);
-		if (!pClients[i]->Connect(strServerIp.c_str(), port)) {
-			LOGE("connect error:%s\n", pClients[i]->GetLastErrMsg());
-		} else {
-			
-		}
+		pClients[i]->Connect(strServerIp.c_str(), port);
 	}
 	char senddata[256];
-	while (true) {
+	int nTry = 500;
+	while (nTry > 0) 
+	{
 		for (int i = 0; i < clientsize; ++i) {
 			if(pClients[i]->IsConnected())
 			{
@@ -117,9 +121,16 @@ int _tmain(int argc, _TCHAR* argv[])
 					LOGI("send succeed:%s", senddata);
 				}
 			}
+			
 		}
-		Sleep(100);
+		nTry--;
+		Sleep(10);
 	}
+}
+
+int _tmain(int argc, _TCHAR* argv[])
+{
+	Func();
 	return 0;
 }
 

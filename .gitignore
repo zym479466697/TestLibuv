@@ -11,5 +11,6 @@ bin/
 *.opensdf
 **/obj
 /Release
+/Debug
 */Debug
 */Release

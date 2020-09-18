@@ -36,6 +36,9 @@
     <ClInclude Include="..\uv\Packet.h">
       <Filter>uv</Filter>
     </ClInclude>
+    <ClInclude Include="..\uv\Looper.h">
+      <Filter>uv</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">
@@ -45,6 +48,9 @@
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="..\uv\TcpClient.cpp">
+      <Filter>uv</Filter>
+    </ClCompile>
+    <ClCompile Include="..\uv\Looper.cpp">
       <Filter>uv</Filter>
     </ClCompile>
   </ItemGroup>
