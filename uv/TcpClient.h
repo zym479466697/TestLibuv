@@ -6,6 +6,7 @@
 #include "uv.h"
 #include "Packet.h"
 #include "Looper.h"
+#include <functional>
 
 namespace uv
 {
@@ -24,35 +25,40 @@ void FreeTcpClientCtx(TcpClientCtx* ctx);
 
 class CTcpClient
 {
+	friend class CLooper;
 public:
-	enum  CONNECT_STATUS{
-		CONNECT_TIMEOUT,
-		CONNECT_FINISH,
-		CONNECT_ERROR,
-		CONNECT_DIS,
+	enum  TCP_STATUS{
+		TCP_STATUS_NONE,
+		TCP_STATUS_CONNECTING,
+		TCP_STATUS_CONNECTED,
+		TCP_STATUS_CONNECT_ERROR,
 	};
 
 	CTcpClient(uint32_t packhead);
 	virtual ~CTcpClient();
 	bool Init(CLooper *_lp);
-	void Connect(const char* ip, int port, bool isIPv6 = false);
+
+	bool Connect(const char* ip, int port, bool isIPv6 = false);
+	void OnConnectCBEvent(std::function<void(int, void*)> func_conn);
+	void OnRecvCBEvent(std::function<void(NetPacket*, void*)> func_recv);
+	void OnCloseCBEvent(std::function<void(int, void*)> func_close);
 	int  Send(const char* data, std::size_t len);
 	void Close();
+
 	bool IsConnected() {
-		return _connect_status == CONNECT_FINISH;
+		return _connect_status == TCP_STATUS_CONNECTED;
 	}
 	const char* GetLastErrMsg() const {
 		return errmsg_.c_str();
 	};
 
-	void SetRecvCB(ClientRecvCB pfun, void* userdata);//set recv cb
-	void SetClosedCB(TcpCloseCB pfun, void* userdata);//set close cb.
-	void SetConnectCB(ClientConnectCB pfun, void* userdata);
-
+	int GetClientId(){
+		return _tcp_client_ctx->clientid;
+	}
+protected:
 	void DoEvent(UvEvent* _event);
 	void OnHandleClose(uv_handle_t*);
-protected:
-	
+
 	void connectinl();
 	void closeinl();
 	void sendinl(const char* _buff, int _size);
@@ -63,20 +69,17 @@ protected:
 	static void AllocBufferForRecv(uv_handle_t* handle, size_t suggested_size, uv_buf_t* buf);
 	static void AfterHandleClose(uv_handle_t* handle);
 	static void GetPacket(const char* _buff, int _size, void* userdata);
-
-	ClientRecvCB _recvcb_func;
-	void* recvcb_userdata_;
-
-	TcpCloseCB closedcb_;
-	void* closedcb_userdata_;
-
-	ClientConnectCB _conn_cb;
-	void* conn_userdata_;
 private:
+	static int s_base_client_id;
+
+	std::function<void(int, void*)> _func_conn_cb;
+	std::function<void(int, void*)> _func_close_cb;
+	std::function<void(NetPacket*, void*)> _func_recv_cb;
+
 	TcpClientCtx *_tcp_client_ctx;
 	uv_connect_t _connect_req;
 	bool _is_ipv6;
-	bool _is_closed;
+	bool _is_wait_closed;
 	uint32_t _packet_head;
 	int _connect_status;
 	int _connect_port;

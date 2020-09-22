@@ -3,6 +3,7 @@
 #include "stdafx.h"
 #include "TcpClient.h"
 #include "Looper.h"
+#include <map>
 
 #pragma comment(lib, "libuv.lib")
 #pragma comment(lib,"ws2_32.lib")
@@ -59,78 +60,94 @@ std::string PacketData(int clientId, const char* data, int dataSize)
 }
 
 
-void CloseCB(int clientid, void* userdata)
-{
-	LOGI("cliend %d close", clientid);
-	uv::CTcpClient* client = (uv::CTcpClient*)userdata;
-	client->Close();
-}
-
-//读取回调
-void ReadCB(NetPacket* pNetPacket, void* userdata)
-{
-	char szRecvData[1024] = {0};
-	std::memcpy(szRecvData, pNetPacket->data, pNetPacket->dataSize);
-	LOGI("recv from server data =%s",  szRecvData);
-}
-
-//连接回调
-void ConnectCB(int status, void* userdata)
-{
-	uv::CTcpClient* pClient = (uv::CTcpClient*)userdata;
-	if(status == uv::CTcpClient::CONNECT_FINISH)
-	{
-		LOGI("client(%p) connect succeed.", pClient);
-	}
-}
-
 int call_time = 0;
-
 void Func()
 {
-	const int clientsize = 20;
+	const int clientsize = 3;
 	std::string strServerIp = "127.0.0.1";
 	const int port = 6666;
 
-	uv::CLooper looper;
-	looper.InitLooper();
-
-	uv::CTcpClient** pClients = new uv::CTcpClient*[clientsize];
-
+	uv::CLooper* ptrLooper = new uv::CLooper;
+	ptrLooper->InitLooper();
+	std::map<int, uv::CTcpClient*> clientMap;
 	for (int i = 0; i < clientsize; ++i) {
-		pClients[i] = new uv::CTcpClient(DEF_PACK_HEAD_FLAG);
-		pClients[i]->Init(&looper);
-		pClients[i]->SetRecvCB(ReadCB, pClients[i]);
-		pClients[i]->SetClosedCB(CloseCB, pClients[i]);
-		pClients[i]->SetConnectCB(ConnectCB, pClients[i]);
-		pClients[i]->Connect(strServerIp.c_str(), port);
+		uv::CTcpClient* ptrClient = new uv::CTcpClient(DEF_PACK_HEAD_FLAG);
+		clientMap[ptrClient->GetClientId()] = ptrClient;
+		ptrClient->Init(ptrLooper);
+
+		ptrClient->OnConnectCBEvent([](int status, void* userdata){
+			uv::CTcpClient* pClient = (uv::CTcpClient*)userdata;
+			if(status == uv::CTcpClient::TCP_STATUS_CONNECTED){
+				LOGI("client_id=%d connect succeed.", pClient->GetClientId());
+			}
+		});
+		
+		ptrClient->OnRecvCBEvent([](NetPacket* pNetPacket, void* userdata){
+			uv::CTcpClient* pClient = (uv::CTcpClient*)userdata;
+			char szRecvData[1024] = {0};
+			std::memcpy(szRecvData, pNetPacket->data, pNetPacket->dataSize);
+			LOGI("recv from server data =%s",  szRecvData);
+		});
+
+		ptrClient->OnCloseCBEvent([&clientMap](int clientid, void* userdata){
+			uv::CTcpClient* pClient = (uv::CTcpClient*)userdata;
+			LOGI("clientid=%d close", clientid);
+		});
+
+		ptrClient->Connect(strServerIp.c_str(), port);
 	}
+
 	char senddata[256];
-	int nTry = 500;
+	int nTry = 5;
 	while (nTry > 0) 
 	{
-		for (int i = 0; i < clientsize; ++i) {
-			if(pClients[i]->IsConnected())
+		for (auto iter = clientMap.begin(), iterEnd = clientMap.end();
+			iter != iterEnd; iter++) {
+			uv::CTcpClient* pClient = iter->second;
+			if(pClient->IsConnected())
 			{
 				memset(senddata, 0, sizeof(senddata));
-				sprintf(senddata, "client(%p) call %d", pClients[i], ++call_time);
-				std::string str = PacketData(i, senddata, strlen(senddata));
-				if (pClients[i]->Send(&str[0], str.length()) <= 0) {
-					LOGE("(%p)send error.%s", pClients[i], pClients[i]->GetLastErrMsg());
+				sprintf(senddata, "clientid=%d =>[%d]", pClient->GetClientId(), ++call_time);
+				std::string str = PacketData(pClient->GetClientId(), senddata, strlen(senddata));
+				if (pClient->Send(&str[0], str.length()) <= 0) {
+					LOGE("(%d)send error.%s", pClient->GetClientId(), pClient->GetLastErrMsg());
 				} else {
-					LOGI("send succeed:%s", senddata);
+					LOGI("(%d)send succeed:%s", pClient->GetClientId(), senddata);
 				}
 			}
 			
 		}
 		nTry--;
-		Sleep(10);
+		Sleep(1000);
 	}
+
+	//close all
+	//for (auto iter = clientMap.begin(), iterEnd = clientMap.end();
+	//	iter != iterEnd; iter++) {
+	//		uv::CTcpClient* pClient = iter->second;
+	//		if(pClient->IsConnected())
+	//		{
+	//			pClient->Close();
+	//		}
+	//}
+
+	delete ptrLooper;
+	ptrLooper = nullptr;
+
+	//delete 
+	for (auto iter = clientMap.begin(), iterEnd = clientMap.end();
+		iter != iterEnd; iter++) {
+			uv::CTcpClient* pClient = iter->second;
+			delete pClient;
+			pClient = nullptr;
+	}
+	clientMap.clear();
 }
 
 int _tmain(int argc, _TCHAR* argv[])
 {
 	Func();
+	system("pause");
 	return 0;
 }
 
