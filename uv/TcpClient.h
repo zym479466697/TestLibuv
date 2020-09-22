@@ -17,13 +17,12 @@ typedef struct _tcpclient_ctx {
     PacketSync* packet_;//store this on userdata
     uv_buf_t read_buf_;
     int clientid;
-    void* parent_server;//store TCPClient point
 } TcpClientCtx;
 
 TcpClientCtx* AllocTcpClientCtx(void* parentserver);
 void FreeTcpClientCtx(TcpClientCtx* ctx);
 
-class CTcpClient
+class CTcpClient : public ILooperEvent
 {
 	friend class CLooper;
 public:
@@ -36,14 +35,17 @@ public:
 
 	CTcpClient(uint32_t packhead);
 	virtual ~CTcpClient();
-	bool Init(CLooper *_lp);
 
+	bool Init(CLooper *_lp);
 	bool Connect(const char* ip, int port, bool isIPv6 = false);
+	void Close();
+	int Send(const char* data, std::size_t len);
+	bool SetNoDelay(bool enable);
+	bool SetKeepAlive(int enable, unsigned int delay);
+
 	void OnConnectCBEvent(std::function<void(int, void*)> func_conn);
 	void OnRecvCBEvent(std::function<void(NetPacket*, void*)> func_recv);
 	void OnCloseCBEvent(std::function<void(int, void*)> func_close);
-	int  Send(const char* data, std::size_t len);
-	void Close();
 
 	bool IsConnected() {
 		return _connect_status == TCP_STATUS_CONNECTED;
@@ -55,9 +57,10 @@ public:
 	int GetClientId(){
 		return _tcp_client_ctx->clientid;
 	}
+
 protected:
-	void DoEvent(UvEvent* _event);
-	void OnHandleClose(uv_handle_t*);
+	virtual void DoEvent(UvEvent* _event);
+	virtual void OnHandleClose(uv_handle_t*);
 
 	void connectinl();
 	void closeinl();

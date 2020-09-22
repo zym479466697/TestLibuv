@@ -11,8 +11,7 @@ TcpClientCtx* AllocTcpClientCtx(void* parentserver)
     ctx->packet_ = new PacketSync;
     ctx->read_buf_.base = (char*)malloc(PACK_BUFFER_SIZE);
     ctx->read_buf_.len = PACK_BUFFER_SIZE;
-    ctx->write_req.data = ctx;//store self
-    ctx->parent_server = parentserver;//store TCPClient
+    ctx->write_req.data = parentserver;//store self
     return ctx;
 }
 
@@ -49,9 +48,8 @@ bool CTcpClient::Init(CLooper *_lp)
 		return false;
 	}
 
-	_tcp_client_ctx->tcphandle.data = _tcp_client_ctx;
-	_tcp_client_ctx->parent_server = this;
-	_tcp_client_ctx->packet_->SetPacketCB(GetPacket, _tcp_client_ctx);
+	_tcp_client_ctx->tcphandle.data = this;
+	_tcp_client_ctx->packet_->SetPacketCB(GetPacket, this);
 	_tcp_client_ctx->packet_->Start(_packet_head);
 
 	_is_wait_closed = false;
@@ -65,6 +63,10 @@ bool CTcpClient::Connect(const char* ip, int port, bool isIPv6)
 	{
 		return false;
 	}
+
+	if(_is_wait_closed)
+		return false;
+
 	_connect_ip = ip;
 	_connect_port = port;
 	_is_ipv6 = isIPv6;
@@ -106,6 +108,29 @@ int  CTcpClient::Send(const char* _buff, std::size_t _size)
 		return _size;
 	}
 	return 0;
+}
+
+
+bool CTcpClient::SetNoDelay(bool enable)
+{
+	int iret = uv_tcp_nodelay(&_tcp_client_ctx->tcphandle, enable ? 1 : 0);
+	if (iret) {
+		errmsg_ = GetUVError(iret);
+		LOGE("uv_tcp_nodelay %s", errmsg_.c_str());
+		return false;
+	}
+	return true;
+}
+
+bool CTcpClient::SetKeepAlive(int enable, unsigned int delay)
+{
+	int iret = uv_tcp_keepalive(&_tcp_client_ctx->tcphandle, enable , delay);
+	if (iret) {
+		errmsg_ = GetUVError(iret);
+		LOGE("uv_tcp_keepalive %s", errmsg_.c_str());
+		return false;
+	}
+	return true;
 }
 
 void CTcpClient::Close()
@@ -205,45 +230,43 @@ void CTcpClient::sendinl(const char* _buff, int _size)
 
 void CTcpClient::AfterConnect(uv_connect_t* handle, int status)
 {
-	TcpClientCtx* theclass = (TcpClientCtx*)handle->handle->data;
-	CTcpClient* parent = (CTcpClient*)theclass->parent_server;
+	CTcpClient* theClass = (CTcpClient*)handle->handle->data;
 	if (status) {
-		parent->_connect_status = TCP_STATUS_CONNECT_ERROR;
-		parent->errmsg_ = GetUVError(status);
-		LOGE("client connect error:%s",  parent->errmsg_.c_str());
+		theClass->_connect_status = TCP_STATUS_CONNECT_ERROR;
+		theClass->errmsg_ = GetUVError(status);
+		LOGE("client connect error:%s",  theClass->errmsg_.c_str());
 		//parent->_conn_cb(parent->_connect_status ,  parent->conn_userdata_);
-		if(parent->_func_conn_cb)
-			parent->_func_conn_cb(parent->_connect_status ,  (void*)parent);
+		if(theClass->_func_conn_cb)
+			theClass->_func_conn_cb(theClass->_connect_status ,  (void*)theClass);
 		return;
 	}
 	int iret = uv_read_start(handle->handle, AllocBufferForRecv, AfterRecv);
 	if (iret) {
-		parent->errmsg_ = GetUVError(status);
-		LOGE("client() uv_read_start error:%s", parent->errmsg_.c_str());
-		parent->_connect_status = TCP_STATUS_CONNECT_ERROR;
+		theClass->errmsg_ = GetUVError(status);
+		LOGE("client() uv_read_start error:%s", theClass->errmsg_.c_str());
+		theClass->_connect_status = TCP_STATUS_CONNECT_ERROR;
 	} else {
-		parent->_connect_status = TCP_STATUS_CONNECTED;
+		theClass->_connect_status = TCP_STATUS_CONNECTED;
 		//LOGI("clientid=%d connect to server ok", theclass->clientid);
 	}
 	//connect callback
 	//parent->_conn_cb(parent->_connect_status ,  parent->conn_userdata_);
-	if(parent->_func_conn_cb)
-		parent->_func_conn_cb(parent->_connect_status ,  (void*)parent);
+	if(theClass->_func_conn_cb)
+		theClass->_func_conn_cb(theClass->_connect_status ,  (void*)theClass);
 }
 
 
 void CTcpClient::AfterRecv(uv_stream_t* handle, ssize_t nread, const uv_buf_t* buf)
 {
-	TcpClientCtx* ptrClientCtx = (TcpClientCtx*)handle->data;
-	assert(ptrClientCtx);
-	CTcpClient* parent = (CTcpClient*)ptrClientCtx->parent_server;
+	CTcpClient* theClass = (CTcpClient*)handle->data;
+	assert(theClass);
 	if (nread < 0) {
-		parent->_connect_status = TCP_STATUS_NONE;
+		theClass->_connect_status = TCP_STATUS_NONE;
 		//if (parent->_conn_cb) {
 		//	parent->_conn_cb(parent->_connect_status, parent->conn_userdata_);
 		//}
-		if(parent->_func_conn_cb)
-			parent->_func_conn_cb(parent->_connect_status ,  (void*)parent);
+		if(theClass->_func_conn_cb)
+			theClass->_func_conn_cb(theClass->_connect_status ,  (void*)theClass);
 
 		if (nread == UV_EOF) {
 			LOGE("Server close(EOF) Client %p\n", handle);
@@ -257,13 +280,13 @@ void CTcpClient::AfterRecv(uv_stream_t* handle, ssize_t nread, const uv_buf_t* b
 	}
 	//parent->sendinl(NULL);
 	if (nread > 0) {
-		ptrClientCtx->packet_->recvdata((const unsigned char*)buf->base, nread);
+		theClass->_tcp_client_ctx->packet_->recvdata((const unsigned char*)buf->base, nread);
 	}
 }
 
 void CTcpClient::AfterSend(uv_write_t* req, int status)
 {
-	TcpClientCtx* ptrClientCtx = (TcpClientCtx*)req->data;
+	CTcpClient* theClass = (CTcpClient*)req->data;
 	if (status < 0) {
 		LOGE("send error:%s", GetUVError(status).c_str());
 		fprintf(stderr, "send error %s\n", GetUVError(status));
@@ -273,7 +296,8 @@ void CTcpClient::AfterSend(uv_write_t* req, int status)
 
 void CTcpClient::AllocBufferForRecv(uv_handle_t* handle, size_t suggested_size, uv_buf_t* buf)
 {
-	TcpClientCtx* ptrClientCtx = (TcpClientCtx*)handle->data;
+	CTcpClient* theClass = (CTcpClient*)handle->data;
+	TcpClientCtx* ptrClientCtx = theClass->_tcp_client_ctx;
 	assert(ptrClientCtx);
 	*buf = ptrClientCtx->read_buf_;
 }
@@ -281,24 +305,24 @@ void CTcpClient::AllocBufferForRecv(uv_handle_t* handle, size_t suggested_size, 
 
 void CTcpClient::AfterHandleClose(uv_handle_t* handle)
 {
-	TcpClientCtx* ptrClientCtx = (TcpClientCtx*)handle->data;
+	CTcpClient* theClass = (CTcpClient*)handle->data;
+	TcpClientCtx* ptrClientCtx = theClass->_tcp_client_ctx;
 	if (handle == (uv_handle_t*)&ptrClientCtx->tcphandle) {
-		CTcpClient* parent = (CTcpClient*)ptrClientCtx->parent_server;
-		parent->_connect_status = TCP_STATUS_NONE;
-		if(parent->_func_close_cb)
-			parent->_func_close_cb(parent->GetClientId() ,  (void*)parent);
+		if(theClass->_func_close_cb)
+			theClass->_func_close_cb(theClass->GetClientId() ,  (void*)theClass);
+		theClass->_connect_status = TCP_STATUS_NONE;
+		theClass->_is_wait_closed = false;
 	}
 }
 
 void CTcpClient::GetPacket(const char* _buff, int _size, void* userdata)
 {
 	assert(userdata);
-	TcpClientCtx* ptrClientCtx = (TcpClientCtx*)userdata;
+	CTcpClient* theClass = (CTcpClient*)userdata;
 	NetPacket* pNetPacket = (NetPacket*)malloc(_size);
 	std::memcpy(pNetPacket, _buff, _size);
-	CTcpClient* parent = (CTcpClient*)ptrClientCtx->parent_server;
-	if (parent->_func_recv_cb) {//cb the data to user
-		parent->_func_recv_cb(pNetPacket, (void*)parent);
+	if (theClass->_func_recv_cb) {//cb the data to user
+		theClass->_func_recv_cb(pNetPacket, (void*)theClass);
 	}
 	free(pNetPacket);
 }

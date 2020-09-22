@@ -7,6 +7,9 @@
 #include <queue>
 #include "uv_utils.h"
 #include "Packet.h"
+#include "Looper.h"
+#include <functional>
+
 namespace uv
 {
 
@@ -23,24 +26,21 @@ typedef struct _tcp_session_ctx {
 TcpSessionCtx* AllocTcpSessionCtx(void* parentserver);
 void FreeTcpSessionCtx(TcpSessionCtx* ctx);
 
-class TCPServer
+class TCPServer : public ILooperEvent
 {
 	friend TcpClientSession;
 public:
     TCPServer(uint32_t packhead);
     virtual ~TCPServer();
 public:
-    void SetNewConnectCB(NewConnectCB cb, void* userdata);//set new connect cb.
-    //void SetTcpClientSessionRecvCB(int clientid, TcpClientSessionRecvCB cb, void* userdata); //set recv cb. call for each accept client.
-    void SetTcpClosedCB(TcpCloseCB pfun, void* userdata);//set close cb.
-    bool Start(const char* ip, int port, bool isIPv6 = false);//Start the server, ipv4
-    void Close();//send close command. verify IsClosed for real closed
+	bool InitLooper(CLooper* looper);
+	void OnNewConnectCBEvent(std::function<void(int, void*)> func_new_conn);
+	void OnTcpClientCloseCBEvent(std::function<void(int, void*)> func_tcp_client_close);
+    
+	bool Start(const char* ip, int port, bool isIPv6 = false);//Start the server, ipv4
+	void Close();
 	bool Broadcast(const std::string& senddata, std::vector<int> excludeid);//broadcast to all clients, except the client who's id in excludeid
-
-    //Enable or disable Nagle’s algorithm. must call after Server succeed start.
     bool SetNoDelay(bool enable);
-	//Enable or disable KeepAlive. must call after Server succeed start.
-	//delay is the initial delay in seconds, ignored when enable is zero
     bool SetKeepAlive(int enable, unsigned int delay);
 
 	bool IsClosed() {//verify if real closed
@@ -51,18 +51,21 @@ public:
     };
 
 protected:
+	virtual void DoEvent(UvEvent *);
+	virtual void OnHandleClose(uv_handle_t *);
+
     int CreateSessionId()const;
-	void PushCloseEvent();
-	int PushWriteEvent(const char* _buff, int _size);
 	bool PushBroadcastEvent(const std::string& senddata, std::vector<int> excludeid);
-	void DoEvent();
+
+	bool bind(const char* ip, int port, bool isIPv6);
+	bool listen(int backlog = SOMAXCONN);
+	bool sendinl(const char* _buff, int _size, TcpSessionCtx* client);
+	bool broadcastinl(const char* _buff, int _size, std::vector<int> excludeidList);
+
     //Static callback function
-	static void AsyncCB(uv_async_t* handle);//async close
     static void AfterServerClose(uv_handle_t* handle);
 	static void TcpClientSessionHandleClose(int clientid, void* userdata); //AcceptClient close cb
     static void AcceptConnection(uv_stream_t* server, int status);
-	static void CloseWalkCB(uv_handle_t* handle, void* arg);//close all handle in loop
-	static void WorkThread(void* arg);//start thread,run until use close the server
 private:
     enum {
         START_TIMEOUT,
@@ -73,68 +76,46 @@ private:
 	std::string _bind_ip;
 	int _bind_port;
 	uint32_t _packet_head;//protocol head
+	bool _is_closed;
+	std::string errmsg_;
 
-    bool init();
-    void closeinl();//real close fun
-    bool run(int status = UV_RUN_DEFAULT);
-    bool bind(const char* ip, int port, bool isIPv6);
-    bool listen(int backlog = SOMAXCONN);
-    bool sendinl(const char* _buff, int _size, TcpSessionCtx* client);
-    bool broadcastinl(const char* _buff, int _size, std::vector<int> excludeidList);
-    uv_loop_t loop_;
+    CLooper* _looper;
     uv_tcp_t _tcp_server_handle;
-	uv_async_t _async_event_handle;
-	uv_thread_t _thread_handle;//start thread handle
 
-	std::queue<UvEvent*> _event_queue;
-	uv::CMutex _event_queue_mutex;
+	std::function<void(int, void*)> _func_new_conn;
+	std::function<void(int, void*)> _func_tcp_client_close;
+	
 	std::map<int, TcpClientSession*> _client_session_map; //clients map
-    bool _is_closed;
-    //TCPServerProtocolProcess* protocol_;//protocol
-    int _start_status;
-    std::string errmsg_;
-
-    NewConnectCB _new_conn_cb_func;
-    void* _new_conn_cb_func_user_data;
-    TcpCloseCB _tcp_closed_cb_func;
-    void* _tcp_closed_cb_func_user_data;
-
     std::list<TcpSessionCtx*> _idle_tcp_client_ctx_list;//Availa accept client data
-public:
     std::list<write_param*> writeparam_list_;//Availa write_t
 };
 
 
-class TcpClientSession
+class TcpClientSession : ILooperEvent
 {
 public:
-    TcpClientSession(TcpSessionCtx* control, int clientid, uint32_t packhead, uv_loop_t* loop);
+    TcpClientSession(TcpSessionCtx* control, int clientid, uint32_t packhead, CLooper* loop);
     virtual ~TcpClientSession();
-    void SetRecvCB(TcpClientSessionRecvCB pfun, void* userdata);//set recv cb
-    void SetClosedCB(TcpCloseCB pfun, void* userdata);//set close cb.
-	bool Send(const char* _buff, int _size);
     TcpSessionCtx* GetTcpHandle(void) const;
     void Close();
     const char* GetLastErrMsg() const {
         return errmsg_.c_str();
     };
-private:
-    bool init(uint32_t packhead);
-    uv_loop_t* loop_;
-    int client_id_;
-    TcpSessionCtx* client_handle_;//accept client data
-    bool isclosed_;
-    std::string errmsg_;
-    TcpClientSessionRecvCB recvcb_;
-    void* recvcb_userdata_;
-    TcpCloseCB closedcb_;
-    void* closedcb_userdata_;
 public:
-    static void AfterClientClose(uv_handle_t* handle);
+	static void AfterClientClose(uv_handle_t* handle);
 	static void AllocBufferForRecv(uv_handle_t* handle, size_t suggested_size, uv_buf_t* buf);
 	static void AfterRecv(uv_stream_t* client, ssize_t nread, const uv_buf_t* buf);
 	static void AfterSend(uv_write_t* req, int status);
 	static void GetPacket(const char* _buff, int _size, void* userdata);
+protected:
+	virtual void DoEvent(UvEvent *);
+	virtual void OnHandleClose(uv_handle_t *);
+private:
+    CLooper* _looper;
+    TcpSessionCtx* client_handle_;
+	int client_id_;
+    bool isclosed_;
+    std::string errmsg_;
 };
 
 }

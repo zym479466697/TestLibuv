@@ -8,7 +8,13 @@
 
 namespace uv
 {
-	class CTcpClient;
+	class ILooperEvent
+	{
+	public:
+		virtual void DoEvent(UvEvent *) {}
+		virtual void OnHandleClose(uv_handle_t *) {}
+	};
+
 	class CLooper
 	{
 	public:

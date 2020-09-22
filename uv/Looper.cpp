@@ -95,7 +95,7 @@ namespace uv
 		}
 		else
 		{
-			CTcpClient* ptrClient = (CTcpClient*)handle->data;
+			ILooperEvent* ptrClient = static_cast<ILooperEvent*>(handle->data);
 			if(ptrClient){
 				ptrClient->OnHandleClose(handle);
 			}
@@ -127,7 +127,7 @@ namespace uv
 		while(!_event_queue.empty())
 		{
 			UvEvent *pEvent = _event_queue.front();
-			CTcpClient* ptrClient = (CTcpClient*)pEvent->_data;
+			ILooperEvent* ptrClient = (ILooperEvent*)pEvent->_data;
 			ptrClient->DoEvent(pEvent);
 			_event_queue.pop();
 		}

@@ -3,6 +3,8 @@
 
 #include "stdafx.h"
 #include "TcpServer.h"
+#include "Looper.h"
+
 #pragma comment(lib, "libuv.lib")
 #pragma comment(lib,"ws2_32.lib")
 #pragma comment(lib, "IPHLPAPI.lib")
@@ -42,33 +44,56 @@ void LogUv(int level, const char * file, int line, char *func, char* format, ...
 }
 
 
-uv::TCPServer server(DEF_PACK_HEAD_FLAG);
-
-void CloseCB(int clientid, void* userdata)
+bool CtrlHandler(DWORD fdwctrltype)
 {
-	LOGI("cliend %d close\n",clientid);
-	uv::TCPServer *theclass = (uv::TCPServer *)userdata;
-	//is_eist = true;
-}
-
-void NewConnect(int clientid, void* userdata)
-{
-	LOGI("new connect:%d\n",clientid);
-	//server.SetRecvCB(clientid,NULL,NULL);
+	switch (fdwctrltype)
+	{
+	// handle the ctrl-c signal.
+	case CTRL_C_EVENT:
+		printf("ctrl-c event\n\n");
+		return(false);
+	default:
+		return false;
+	}
 }
 
 int _tmain(int argc, _TCHAR* argv[])
 {
-	server.SetNewConnectCB(NewConnect, &server);
+	uv::CLooper* ptrLooper = new uv::CLooper;
+	ptrLooper->InitLooper();
+	uv::TCPServer server(DEF_PACK_HEAD_FLAG);
+	server.InitLooper(ptrLooper);
+
+	server.OnNewConnectCBEvent([](int clientid, void* userdata){
+		uv::TcpClientSession *theclass = (uv::TcpClientSession *)userdata;
+		LOGI("new connect:%d\n", clientid);
+	});
+
+	server.OnTcpClientCloseCBEvent([](int clientid, void* userdata){
+		LOGI("cliend %d close", clientid);
+		uv::TcpClientSession *theclass = (uv::TcpClientSession *)userdata;
+	});
+
 	//server.SetPortocol(&protocol);
-	if(!server.Start("0.0.0.0",6666)) {
+	if(!server.Start("0.0.0.0", 6666)) {
 		LOGE("Start Server error:%s\n", server.GetLastErrMsg());
 	}
 	server.SetKeepAlive(1, 60);//enable Keepalive, 60s
 	LOGI("server on main.");
-	while(true) {
-		Sleep(10);
+
+	if (SetConsoleCtrlHandler((PHANDLER_ROUTINE)CtrlHandler, true))
+	{
+		while (1) { Sleep(1000); }
 	}
+	else
+	{
+		delete ptrLooper;
+		ptrLooper = nullptr;
+		printf("exit \r\n");
+	}
+	//Sleep(10000);
+	//delete ptrLooper;
+	//ptrLooper = nullptr;
 	return 0;
 }
 

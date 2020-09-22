@@ -5,6 +5,7 @@
 #include "Looper.h"
 #include <map>
 
+
 #pragma comment(lib, "libuv.lib")
 #pragma comment(lib,"ws2_32.lib")
 #pragma comment(lib, "IPHLPAPI.lib")
@@ -33,13 +34,14 @@ void LogUv(int level, const char * file, int line, char *func, char* format, ...
 
 	char logbufw[4096] = {0};
 	if(level == UV_LOG_LEVEL_ERROR) {
-		_snprintf_s(logbufw, _countof(logbufw), _TRUNCATE, "[%d][%s][ERROR]%s\n", GetCurrentThreadId(), szTime, szMessage);
+		_snprintf_s(logbufw, _countof(logbufw), _TRUNCATE, "[%06d][%s][ERROR]%s\n", GetCurrentThreadId(), szTime, szMessage);
 	}
 	else {
-		_snprintf_s(logbufw, _countof(logbufw), _TRUNCATE, "[%d][%s][INFO]%s\n", GetCurrentThreadId(), szTime, szMessage);
+		_snprintf_s(logbufw, _countof(logbufw), _TRUNCATE, "[%06d][%s][INFO]%s\n", GetCurrentThreadId(), szTime, szMessage);
 	}
 	//Ð´ÈëÎÄ¼þ
 	//OutputDebugStringA(logbufw);
+	std::string str = logbufw;
 	printf("%s", logbufw);
 }
 
@@ -59,6 +61,11 @@ std::string PacketData(int clientId, const char* data, int dataSize)
 	return buffer;
 }
 
+void SetConsoleColor(unsigned short ForeColor=0, unsigned short BackGroundColor=0)
+{
+	HANDLE hCon=GetStdHandle(STD_OUTPUT_HANDLE);
+	SetConsoleTextAttribute(hCon,ForeColor|BackGroundColor);
+}
 
 int call_time = 0;
 void Func()
@@ -86,19 +93,19 @@ void Func()
 			uv::CTcpClient* pClient = (uv::CTcpClient*)userdata;
 			char szRecvData[1024] = {0};
 			std::memcpy(szRecvData, pNetPacket->data, pNetPacket->dataSize);
-			LOGI("recv from server data =%s",  szRecvData);
+			LOGI("[RECV][id=%d] =>---%s",  pClient->GetClientId(), szRecvData);
 		});
 
 		ptrClient->OnCloseCBEvent([&clientMap](int clientid, void* userdata){
 			uv::CTcpClient* pClient = (uv::CTcpClient*)userdata;
-			LOGI("clientid=%d close", clientid);
+			LOGI("[CLOSE][id=%d]", clientid);
 		});
 
 		ptrClient->Connect(strServerIp.c_str(), port);
 	}
 
 	char senddata[256];
-	int nTry = 5;
+	int nTry = 500;
 	while (nTry > 0) 
 	{
 		for (auto iter = clientMap.begin(), iterEnd = clientMap.end();
@@ -107,18 +114,18 @@ void Func()
 			if(pClient->IsConnected())
 			{
 				memset(senddata, 0, sizeof(senddata));
-				sprintf(senddata, "clientid=%d =>[%d]", pClient->GetClientId(), ++call_time);
+				sprintf(senddata, "%d", ++call_time);
 				std::string str = PacketData(pClient->GetClientId(), senddata, strlen(senddata));
 				if (pClient->Send(&str[0], str.length()) <= 0) {
-					LOGE("(%d)send error.%s", pClient->GetClientId(), pClient->GetLastErrMsg());
+					LOGI("[ERROR][id=%d] =>%s",  pClient->GetClientId(), pClient->GetLastErrMsg());
 				} else {
-					LOGI("(%d)send succeed:%s", pClient->GetClientId(), senddata);
+					LOGI("[SEND][id=%d] =>+++%s",  pClient->GetClientId(), senddata);
 				}
 			}
 			
 		}
 		nTry--;
-		Sleep(1000);
+		Sleep(10);
 	}
 
 	//close all
