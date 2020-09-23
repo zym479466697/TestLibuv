@@ -1,5 +1,5 @@
-﻿#ifndef TCPSERVER_H
-#define TCPSERVER_H
+﻿#ifndef CTcpServer_H
+#define CTcpServer_H
 #include <string>
 #include <list>
 #include <map>
@@ -13,29 +13,30 @@
 namespace uv
 {
 
-class TcpClientSession;
+class CTcpClientSession;
 typedef struct _tcp_session_ctx {
     uv_tcp_t _session_tcp_handle;//data filed store this
     PacketSync* packet_;//userdata filed storethis
     uv_buf_t read_buf_;
     int clientid;
-    void* parent_server;//tcpserver
+    void* parent_server;//CTcpServer
     void* parent_acceptclient;//accept client
 } TcpSessionCtx;
 
 TcpSessionCtx* AllocTcpSessionCtx(void* parentserver);
 void FreeTcpSessionCtx(TcpSessionCtx* ctx);
 
-class TCPServer : public ILooperEvent
+class CTcpServer : public ILooperEvent
 {
-	friend TcpClientSession;
+	friend CTcpClientSession;
 public:
-    TCPServer(uint32_t packhead);
-    virtual ~TCPServer();
+    CTcpServer(uint32_t packhead);
+    virtual ~CTcpServer();
 public:
 	bool InitLooper(CLooper* looper);
 	void OnNewConnectCBEvent(std::function<void(int, void*)> func_new_conn);
 	void OnTcpClientCloseCBEvent(std::function<void(int, void*)> func_tcp_client_close);
+	void OnTcpClientRecvCBEvent(std::function<void(NetPacket*, void*)> func_tcp_client_recv);
     
 	bool Start(const char* ip, int port, bool isIPv6 = false);//Start the server, ipv4
 	void Close();
@@ -64,7 +65,7 @@ protected:
 
     //Static callback function
     static void AfterServerClose(uv_handle_t* handle);
-	static void TcpClientSessionHandleClose(int clientid, void* userdata); //AcceptClient close cb
+	static void CTcpClientSessionHandleClose(int clientid, void* userdata); //AcceptClient close cb
     static void AcceptConnection(uv_stream_t* server, int status);
 private:
     enum {
@@ -84,20 +85,23 @@ private:
 
 	std::function<void(int, void*)> _func_new_conn;
 	std::function<void(int, void*)> _func_tcp_client_close;
-	
-	std::map<int, TcpClientSession*> _client_session_map; //clients map
+	std::function<void(NetPacket*, void*)> _func_tcp_client_recv;
+
+	std::map<int, CTcpClientSession*> _client_session_map; //clients map
     std::list<TcpSessionCtx*> _idle_tcp_client_ctx_list;//Availa accept client data
     std::list<write_param*> writeparam_list_;//Availa write_t
 };
 
 
-class TcpClientSession : ILooperEvent
+class CTcpClientSession : ILooperEvent
 {
 public:
-    TcpClientSession(TcpSessionCtx* control, int clientid, uint32_t packhead, CLooper* loop);
-    virtual ~TcpClientSession();
+    CTcpClientSession(TcpSessionCtx* control, int clientid, uint32_t packhead, CLooper* loop);
+    virtual ~CTcpClientSession();
     TcpSessionCtx* GetTcpHandle(void) const;
     void Close();
+	void Send(const char* _buff, int _size);
+
     const char* GetLastErrMsg() const {
         return errmsg_.c_str();
     };
@@ -106,7 +110,6 @@ public:
 	static void AllocBufferForRecv(uv_handle_t* handle, size_t suggested_size, uv_buf_t* buf);
 	static void AfterRecv(uv_stream_t* client, ssize_t nread, const uv_buf_t* buf);
 	static void AfterSend(uv_write_t* req, int status);
-	static void GetPacket(const char* _buff, int _size, void* userdata);
 protected:
 	virtual void DoEvent(UvEvent *);
 	virtual void OnHandleClose(uv_handle_t *);
@@ -121,4 +124,4 @@ private:
 }
 
 
-#endif // TCPSERVER_H
+#endif // CTcpServer_H

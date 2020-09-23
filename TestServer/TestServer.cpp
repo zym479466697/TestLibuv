@@ -61,20 +61,36 @@ int _tmain(int argc, _TCHAR* argv[])
 {
 	uv::CLooper* ptrLooper = new uv::CLooper;
 	ptrLooper->InitLooper();
-	uv::TCPServer server(DEF_PACK_HEAD_FLAG);
+	uv::CTcpServer server(DEF_PACK_HEAD_FLAG);
 	server.InitLooper(ptrLooper);
 
 	server.OnNewConnectCBEvent([](int clientid, void* userdata){
-		uv::TcpClientSession *theclass = (uv::TcpClientSession *)userdata;
+		uv::CTcpClientSession *theclass = (uv::CTcpClientSession *)userdata;
 		LOGI("new connect:%d\n", clientid);
 	});
 
 	server.OnTcpClientCloseCBEvent([](int clientid, void* userdata){
 		LOGI("cliend %d close", clientid);
-		uv::TcpClientSession *theclass = (uv::TcpClientSession *)userdata;
+		uv::CTcpClientSession *theclass = (uv::CTcpClientSession *)userdata;
 	});
 
-	//server.SetPortocol(&protocol);
+	server.OnTcpClientRecvCBEvent([](NetPacket* pNetPacket, void* userdata){
+		uv::TcpSessionCtx *tcpSessionCtx = (uv::TcpSessionCtx*)userdata;
+		
+		char szRecvData[1024] = {0};
+		std::memcpy(szRecvData, pNetPacket->data, pNetPacket->dataSize);
+		LOGI("clientid=%d recv=%s", tcpSessionCtx->clientid, szRecvData);
+
+		//send back
+		uv::CTcpClientSession* parent = (uv::CTcpClientSession*)tcpSessionCtx->parent_acceptclient;
+		int pack_size = pNetPacket->dataSize + NET_PACKAGE_HEADLEN;
+		std::string buffer;
+		buffer.resize(pack_size);
+		memcpy(&(buffer[0]), (void*)pNetPacket, NET_PACKAGE_HEADLEN);
+		memcpy(&(buffer[NET_PACKAGE_HEADLEN]), pNetPacket->data, pNetPacket->dataSize);
+		parent->Send((char*)&buffer[0], buffer.size());
+	});
+
 	if(!server.Start("0.0.0.0", 6666)) {
 		LOGE("Start Server error:%s\n", server.GetLastErrMsg());
 	}

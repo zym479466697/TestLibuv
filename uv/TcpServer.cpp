@@ -25,7 +25,7 @@ void FreeTcpSessionCtx(TcpSessionCtx* ctx)
 }
 
 /*****************************************TCP Server*************************************************************/
-TCPServer::TCPServer(uint32_t packhead)
+CTcpServer::CTcpServer(uint32_t packhead)
     : _packet_head(packhead)
     , _is_closed(true)
 {
@@ -33,7 +33,7 @@ TCPServer::TCPServer(uint32_t packhead)
 }
 
 
-TCPServer::~TCPServer()
+CTcpServer::~CTcpServer()
 {
     Close();
     
@@ -49,7 +49,7 @@ TCPServer::~TCPServer()
     LOGI("tcp server exit.");
 }
 
-bool TCPServer::InitLooper(CLooper* looper)
+bool CTcpServer::InitLooper(CLooper* looper)
 {
 	_looper = looper;
 	int _ret = uv_tcp_init(_looper->GetLooper(), &_tcp_server_handle);
@@ -64,7 +64,7 @@ bool TCPServer::InitLooper(CLooper* looper)
 }
 
 
-bool TCPServer::SetNoDelay(bool enable)
+bool CTcpServer::SetNoDelay(bool enable)
 {
     int iret = uv_tcp_nodelay(&_tcp_server_handle, enable ? 1 : 0);
     if (iret) {
@@ -75,7 +75,7 @@ bool TCPServer::SetNoDelay(bool enable)
     return true;
 }
 
-bool TCPServer::SetKeepAlive(int enable, unsigned int delay)
+bool CTcpServer::SetKeepAlive(int enable, unsigned int delay)
 {
     int iret = uv_tcp_keepalive(&_tcp_server_handle, enable , delay);
     if (iret) {
@@ -86,7 +86,7 @@ bool TCPServer::SetKeepAlive(int enable, unsigned int delay)
     return true;
 }
 
-bool TCPServer::bind(const char* ip, int port, bool isIPv6)
+bool CTcpServer::bind(const char* ip, int port, bool isIPv6)
 {
     struct sockaddr_in bind_addr;
 	 struct sockaddr_in6 bind_addr_ipv6;
@@ -116,7 +116,7 @@ bool TCPServer::bind(const char* ip, int port, bool isIPv6)
 }
 
 
-bool TCPServer::listen(int backlog)
+bool CTcpServer::listen(int backlog)
 {
     int iret = uv_listen((uv_stream_t*) &_tcp_server_handle, backlog, AcceptConnection);
     if (iret) {
@@ -128,7 +128,7 @@ bool TCPServer::listen(int backlog)
     return true;
 }
 
-bool TCPServer::Start(const char* ip, int port, bool isIPv6/* = false*/)
+bool CTcpServer::Start(const char* ip, int port, bool isIPv6/* = false*/)
 {
     _bind_ip = ip;
     _bind_port = port;
@@ -144,9 +144,9 @@ bool TCPServer::Start(const char* ip, int port, bool isIPv6/* = false*/)
 }
 
 
-void TCPServer::AcceptConnection(uv_stream_t* server, int status)
+void CTcpServer::AcceptConnection(uv_stream_t* server, int status)
 {
-    TCPServer* tcp_server = (TCPServer*)server->data;
+    CTcpServer* tcp_server = (CTcpServer*)server->data;
     assert(tcp_server);
     if (status) {
         tcp_server->errmsg_ = GetUVError(status);
@@ -181,9 +181,18 @@ void TCPServer::AcceptConnection(uv_stream_t* server, int status)
         LOGE("uv_accept %s", tcp_server->errmsg_.c_str());
         return;
     }
-    ptrCtx->packet_->SetPacketCB(TcpClientSession::GetPacket, (void*)ptrCtx);
-    ptrCtx->packet_->Start(tcp_server->_packet_head);
-    iret = uv_read_start((uv_stream_t*)&ptrCtx->_session_tcp_handle, TcpClientSession::AllocBufferForRecv, TcpClientSession::AfterRecv);
+
+	ptrCtx->packet_->OnPackageCBEvent([ptrCtx](const char* _buff, int _size){
+		CTcpServer* parent = (CTcpServer*)ptrCtx->parent_server;
+		NetPacket* pNetPacket = (NetPacket*)malloc(_size);
+		std::memcpy(pNetPacket, _buff, _size);
+		if(parent->_func_tcp_client_recv)
+			parent->_func_tcp_client_recv(pNetPacket, ptrCtx);
+		free(pNetPacket);
+	});
+
+    ptrCtx->packet_->Init(tcp_server->_packet_head);
+    iret = uv_read_start((uv_stream_t*)&ptrCtx->_session_tcp_handle, CTcpClientSession::AllocBufferForRecv, CTcpClientSession::AfterRecv);
     if (iret) {
         uv_close((uv_handle_t*)&ptrCtx->_session_tcp_handle,  NULL);
 		//Recycle
@@ -197,7 +206,7 @@ void TCPServer::AcceptConnection(uv_stream_t* server, int status)
         return;
     }
 	
-    TcpClientSession* cdata = new TcpClientSession(ptrCtx, clientid, tcp_server->_packet_head, tcp_server->_looper); 
+    CTcpClientSession* cdata = new CTcpClientSession(ptrCtx, clientid, tcp_server->_packet_head, tcp_server->_looper); 
 	tcp_server->_client_session_map.insert(std::make_pair(clientid, cdata)); //add accept client
     if (tcp_server->_func_new_conn) {
         tcp_server->_func_new_conn(clientid, cdata);
@@ -205,33 +214,38 @@ void TCPServer::AcceptConnection(uv_stream_t* server, int status)
     return;
 }
 
-void TCPServer::OnNewConnectCBEvent(std::function<void(int, void*)> func_new_conn)
+void CTcpServer::OnNewConnectCBEvent(std::function<void(int, void*)> func_new_conn)
 {
 	_func_new_conn = func_new_conn;
 }
 
-void TCPServer::OnTcpClientCloseCBEvent(std::function<void(int, void*)> func_tcp_client_close)
+void CTcpServer::OnTcpClientCloseCBEvent(std::function<void(int, void*)> func_tcp_client_close)
 {
 	_func_tcp_client_close = func_tcp_client_close;
 }
 
-void TCPServer::AfterServerClose(uv_handle_t* handle)
+void CTcpServer::OnTcpClientRecvCBEvent(std::function<void(NetPacket*, void*)> func_tcp_client_recv)
 {
-    TCPServer* theclass = (TCPServer*)handle->data;
+	_func_tcp_client_recv = func_tcp_client_recv;
+}
+
+void CTcpServer::AfterServerClose(uv_handle_t* handle)
+{
+    CTcpServer* theclass = (CTcpServer*)handle->data;
 	theclass->_is_closed = true;
     fprintf(stdout, "Close listen tcp handle CB handle=%p\n", handle);
 }
 
 
-int TCPServer::CreateSessionId() const
+int CTcpServer::CreateSessionId() const
 {
     static int s_id = 0;
     return ++s_id;
 }
 
-void TCPServer::TcpClientSessionHandleClose(int clientid, void* userdata)
+void CTcpServer::CTcpClientSessionHandleClose(int clientid, void* userdata)
 {
-    TCPServer* theclass = (TCPServer*)userdata;
+    CTcpServer* theclass = (CTcpServer*)userdata;
     auto itfind = theclass->_client_session_map.find(clientid);
     if (itfind != theclass->_client_session_map.end()) {
         if (theclass->_func_tcp_client_close) {
@@ -248,7 +262,7 @@ void TCPServer::TcpClientSessionHandleClose(int clientid, void* userdata)
     }
 }
 
-bool TCPServer::PushBroadcastEvent(const std::string& senddata, std::vector<int> excludeidList)
+bool CTcpServer::PushBroadcastEvent(const std::string& senddata, std::vector<int> excludeidList)
 {
 	if(_looper){
 		UvEvent* pEvent = CreateUvEvent(UV_EVENT_TYPE_BROADCAST, senddata.c_str(), senddata.size());
@@ -261,7 +275,7 @@ bool TCPServer::PushBroadcastEvent(const std::string& senddata, std::vector<int>
 }
 
 
-void TCPServer::DoEvent(UvEvent* pEvent)
+void CTcpServer::DoEvent(UvEvent* pEvent)
 {
 	switch(pEvent->type)
 	{
@@ -273,27 +287,27 @@ void TCPServer::DoEvent(UvEvent* pEvent)
 	FreeUvEvent(pEvent);
 }
 
-void TCPServer::OnHandleClose(uv_handle_t* handle)
+void CTcpServer::OnHandleClose(uv_handle_t* handle)
 {
 	if (!uv_is_closing(handle)){
 		uv_close(handle, AfterServerClose);
 	}
 }
 
-void TCPServer::Close()
+void CTcpServer::Close()
 {
 	if(_looper)
 		_looper->Close();
 }
 
-bool TCPServer::Broadcast(const std::string& senddata, std::vector<int> excludeid)
+bool CTcpServer::Broadcast(const std::string& senddata, std::vector<int> excludeid)
 {
 	return PushBroadcastEvent(senddata, excludeid);
 }
 
-bool TCPServer::broadcastinl(const char* _buff, int _size, std::vector<int> excludeidList)
+bool CTcpServer::broadcastinl(const char* _buff, int _size, std::vector<int> excludeidList)
 {
-	TcpClientSession* pClient = NULL;
+	CTcpClientSession* pClient = NULL;
 	write_param* writep = NULL;
 	if (excludeidList.empty()) {
 		for (auto it = _client_session_map.begin(); it != _client_session_map.end(); ++it) {
@@ -314,7 +328,7 @@ bool TCPServer::broadcastinl(const char* _buff, int _size, std::vector<int> excl
 	return true;
 }
 
-bool TCPServer::sendinl(const char* _buff, int _size, TcpSessionCtx* client)
+bool CTcpServer::sendinl(const char* _buff, int _size, TcpSessionCtx* client)
 {
     write_param* writep = NULL;
     if (writeparam_list_.empty()) {
@@ -330,7 +344,7 @@ bool TCPServer::sendinl(const char* _buff, int _size, TcpSessionCtx* client)
     memcpy(writep->buf_.base, _buff, _size);
     writep->buf_.len = _size;
     writep->write_req_.data = client;
-    int iret = uv_write((uv_write_t*)&writep->write_req_, (uv_stream_t*)&client->_session_tcp_handle, &writep->buf_, 1, TcpClientSession::AfterSend);//发送
+    int iret = uv_write((uv_write_t*)&writep->write_req_, (uv_stream_t*)&client->_session_tcp_handle, &writep->buf_, 1, CTcpClientSession::AfterSend);//发送
     if (iret) {
         writeparam_list_.push_back(writep);
         errmsg_ = "send data error.";
@@ -341,8 +355,8 @@ bool TCPServer::sendinl(const char* _buff, int _size, TcpSessionCtx* client)
 }
 
 
-/*****************************************TcpClientSession*************************************************************/
-TcpClientSession::TcpClientSession(TcpSessionCtx* control,  int clientid, uint32_t packhead, CLooper* loop)
+/*****************************************CTcpClientSession*************************************************************/
+CTcpClientSession::CTcpClientSession(TcpSessionCtx* control,  int clientid, uint32_t packhead, CLooper* loop)
     : client_handle_(control)
     , client_id_(clientid), _looper(loop)
     , isclosed_(false)
@@ -350,7 +364,7 @@ TcpClientSession::TcpClientSession(TcpSessionCtx* control,  int clientid, uint32
 	client_handle_->parent_acceptclient = this;
 }
 
-TcpClientSession::~TcpClientSession()
+CTcpClientSession::~CTcpClientSession()
 {
     Close();
     while (!isclosed_) {
@@ -358,7 +372,7 @@ TcpClientSession::~TcpClientSession()
     }
 }
 
-void TcpClientSession::Close()
+void CTcpClientSession::Close()
 {
     if (isclosed_) {
         return;
@@ -367,29 +381,35 @@ void TcpClientSession::Close()
     uv_close((uv_handle_t*)&client_handle_->_session_tcp_handle, AfterClientClose);
 }
 
-void TcpClientSession::AfterClientClose(uv_handle_t* handle)
+void CTcpClientSession::Send(const char* _buff, int _size)
 {
-    TcpClientSession* theclass = (TcpClientSession*)handle->data;
+	CTcpServer* parent = (CTcpServer*)client_handle_->parent_server;
+	parent->sendinl(_buff, _size, client_handle_);
+}
+
+void CTcpClientSession::AfterClientClose(uv_handle_t* handle)
+{
+    CTcpClientSession* theclass = (CTcpClientSession*)handle->data;
     assert(theclass);
     if (handle == (uv_handle_t*)&theclass->client_handle_->_session_tcp_handle) {
         theclass->isclosed_ = true;
-		TCPServer::TcpClientSessionHandleClose(theclass->client_id_, theclass->client_handle_->parent_server);
+		CTcpServer::CTcpClientSessionHandleClose(theclass->client_id_, theclass->client_handle_->parent_server);
     }
 }
 
 
-TcpSessionCtx* TcpClientSession::GetTcpHandle(void) const
+TcpSessionCtx* CTcpClientSession::GetTcpHandle(void) const
 {
     return client_handle_;
 }
 
-void TcpClientSession::DoEvent(UvEvent* pEvent)
+void CTcpClientSession::DoEvent(UvEvent* pEvent)
 {
 	switch(pEvent->type)
 	{
 	case UV_EVENT_TYPE_CLOSE:
 		{
-			TcpClientSession* ptr = (TcpClientSession*)pEvent->_data;
+			CTcpClientSession* ptr = (CTcpClientSession*)pEvent->_data;
 			uv_handle_t* tcp_handle = (uv_handle_t*)&(ptr->client_handle_->_session_tcp_handle);
 			if (!uv_is_closing(tcp_handle)){
 				uv_close(tcp_handle, AfterClientClose);
@@ -399,46 +419,47 @@ void TcpClientSession::DoEvent(UvEvent* pEvent)
 	FreeUvEvent(pEvent);
 }
 
-void TcpClientSession::OnHandleClose(uv_handle_t* handle)
+void CTcpClientSession::OnHandleClose(uv_handle_t* handle)
 {
 	if (!uv_is_closing(handle)){
 		uv_close(handle, AfterClientClose);
 	}
 }
 
-void TcpClientSession::AllocBufferForRecv(uv_handle_t* handle, size_t suggested_size, uv_buf_t* buf)
+void CTcpClientSession::AllocBufferForRecv(uv_handle_t* handle, size_t suggested_size, uv_buf_t* buf)
 {
     TcpSessionCtx* theclass = (TcpSessionCtx*)handle->data;
     assert(theclass);
     *buf = theclass->read_buf_;
 }
 
-void TcpClientSession::AfterRecv(uv_stream_t* handle, ssize_t nread, const uv_buf_t* buf)
+void CTcpClientSession::AfterRecv(uv_stream_t* handle, ssize_t nread, const uv_buf_t* buf)
 {
-    TcpSessionCtx* theclass = (TcpSessionCtx*)handle->data;
-    assert(theclass);
+    TcpSessionCtx* pSessionCtx = (TcpSessionCtx*)handle->data;
+    assert(pSessionCtx);
     if (nread < 0) {/* Error or EOF */
         if (nread == UV_EOF) {
-            LOGI("client(%d) eof", theclass->clientid);
+            LOGI("client(%d) eof", pSessionCtx->clientid);
         } else if (nread == UV_ECONNRESET) {
-            LOGI("client(%d) conn reset ", theclass->clientid);
+            LOGI("client(%d) conn reset ", pSessionCtx->clientid);
         } else {
-			LOGI("client(%d) read error=%s", theclass->clientid, GetUVError(nread).c_str());
+			LOGI("client(%d) read error=%s", pSessionCtx->clientid, GetUVError(nread).c_str());
         }
-        TcpClientSession* clien_session = (TcpClientSession*)theclass->parent_acceptclient;
+        CTcpClientSession* clien_session = (CTcpClientSession*)pSessionCtx->parent_acceptclient;
         clien_session->Close();
         return;
     } else if (0 == nread)  {/* Everything OK, but nothing read. */
 
     } else {
-        theclass->packet_->recvdata((const unsigned char*)buf->base, nread);
+		if(pSessionCtx->packet_)
+			pSessionCtx->packet_->OnRecvData((const unsigned char*)buf->base, nread);
     }
 }
 
-void TcpClientSession::AfterSend(uv_write_t* req, int status)
+void CTcpClientSession::AfterSend(uv_write_t* req, int status)
 {
     TcpSessionCtx* theclass = (TcpSessionCtx*)req->data;
-    TCPServer* parent = (TCPServer*)theclass->parent_server;
+    CTcpServer* parent = (CTcpServer*)theclass->parent_server;
     if (parent->writeparam_list_.size() > MAXLISTSIZE) {
         FreeWriteParam((write_param*)req);
     } else {
@@ -447,22 +468,6 @@ void TcpClientSession::AfterSend(uv_write_t* req, int status)
     if (status < 0) {
         LOGE("send data error:%s", GetUVError(status).c_str());
     }
-}
-
-void TcpClientSession::GetPacket(const char* _buff, int _size, void* userdata)
-{
-    assert(userdata);
-    TcpSessionCtx* theclass = (TcpSessionCtx*)userdata;
-    TCPServer* parent = (TCPServer*)theclass->parent_server;
-
-	NetPacket* pNetPacket = (NetPacket*)malloc(_size);
-	std::memcpy(pNetPacket, _buff, _size);
-    //const std::string& senddata = parent->protocol_->ParsePacket(packethead, packetdata);
-	char szRecvData[1024] = {0};
-	std::memcpy(szRecvData, pNetPacket->data, pNetPacket->dataSize);
-	LOGI("clientid=%d recv=%s", theclass->clientid, szRecvData);
-    parent->sendinl(_buff, _size, theclass);
-	free(pNetPacket);
 }
 
 }

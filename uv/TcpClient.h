@@ -71,7 +71,6 @@ protected:
 	static void AfterSend(uv_write_t* req, int status);
 	static void AllocBufferForRecv(uv_handle_t* handle, size_t suggested_size, uv_buf_t* buf);
 	static void AfterHandleClose(uv_handle_t* handle);
-	static void GetPacket(const char* _buff, int _size, void* userdata);
 private:
 	static int s_base_client_id;
 

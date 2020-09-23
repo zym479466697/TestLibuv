@@ -49,8 +49,17 @@ bool CTcpClient::Init(CLooper *_lp)
 	}
 
 	_tcp_client_ctx->tcphandle.data = this;
-	_tcp_client_ctx->packet_->SetPacketCB(GetPacket, this);
-	_tcp_client_ctx->packet_->Start(_packet_head);
+	_tcp_client_ctx->packet_->Init(_packet_head);
+	_tcp_client_ctx->packet_->OnPackageCBEvent([this](const char* _buff, int _size){
+
+		CTcpClient* theClass = (CTcpClient*)_tcp_client_ctx->write_req.data;
+		NetPacket* pNetPacket = (NetPacket*)malloc(_size);
+		std::memcpy(pNetPacket, _buff, _size);
+		if (theClass->_func_recv_cb) {//cb the data to user
+			theClass->_func_recv_cb(pNetPacket, (void*)theClass);
+		}
+		free(pNetPacket);
+	});
 
 	_is_wait_closed = false;
 	return true;
@@ -262,9 +271,6 @@ void CTcpClient::AfterRecv(uv_stream_t* handle, ssize_t nread, const uv_buf_t* b
 	assert(theClass);
 	if (nread < 0) {
 		theClass->_connect_status = TCP_STATUS_NONE;
-		//if (parent->_conn_cb) {
-		//	parent->_conn_cb(parent->_connect_status, parent->conn_userdata_);
-		//}
 		if(theClass->_func_conn_cb)
 			theClass->_func_conn_cb(theClass->_connect_status ,  (void*)theClass);
 
@@ -278,9 +284,9 @@ void CTcpClient::AfterRecv(uv_stream_t* handle, ssize_t nread, const uv_buf_t* b
 		uv_close((uv_handle_t*)handle, AfterHandleClose);//close before reconnect
 		return;
 	}
-	//parent->sendinl(NULL);
+	
 	if (nread > 0) {
-		theClass->_tcp_client_ctx->packet_->recvdata((const unsigned char*)buf->base, nread);
+		theClass->_tcp_client_ctx->packet_->OnRecvData((const unsigned char*)buf->base, nread);
 	}
 }
 
@@ -314,18 +320,5 @@ void CTcpClient::AfterHandleClose(uv_handle_t* handle)
 		theClass->_is_wait_closed = false;
 	}
 }
-
-void CTcpClient::GetPacket(const char* _buff, int _size, void* userdata)
-{
-	assert(userdata);
-	CTcpClient* theClass = (CTcpClient*)userdata;
-	NetPacket* pNetPacket = (NetPacket*)malloc(_size);
-	std::memcpy(pNetPacket, _buff, _size);
-	if (theClass->_func_recv_cb) {//cb the data to user
-		theClass->_func_recv_cb(pNetPacket, (void*)theClass);
-	}
-	free(pNetPacket);
-}
-
 
 }
