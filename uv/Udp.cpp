@@ -1,12 +1,13 @@
 ﻿#include "Udp.h"
+#include <assert.h>
 
 namespace uv
 {
 	UdpCtx* AllocUdpCtx(void* parentserver)
 	{
 		UdpCtx* ctx = (UdpCtx*)malloc(sizeof(*ctx));
-		ctx->_read_buf.base = (char*)malloc(PACK_BUFFER_SIZE);
-		ctx->_read_buf.len = PACK_BUFFER_SIZE;
+		ctx->_read_buf.base = (char*)malloc(PACK_UDP_SIZE);
+		ctx->_read_buf.len = PACK_UDP_SIZE;
 		return ctx;
 	}
 
@@ -69,6 +70,7 @@ namespace uv
 
 	int CUvUdp::Send(const char* buffer, int size, const std::string& strIp, unsigned short uPort, bool isIPv6) 
 	{
+		assert(size <= PACK_UDP_SIZE);
 		struct sockaddr_in bind_addr_ipv4;
 		struct sockaddr_in6 bind_addr_ipv6;
 		int iret = 0;
@@ -87,6 +89,7 @@ namespace uv
 
 	int CUvUdp::Send(const char* buffer, int size, const struct sockaddr* pAddr)
 	{
+		assert(size <= PACK_UDP_SIZE);
 		if(_loop){
 			UvEvent* pEvent = CreateUvEvent(UV_EVENT_TYPE_WRITE, buffer, size);
 			pEvent->_addr = *pAddr;

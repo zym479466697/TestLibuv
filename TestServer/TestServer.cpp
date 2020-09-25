@@ -147,8 +147,8 @@ void TestUdpSvrFunc()
 
 int _tmain(int argc, _TCHAR* argv[])
 {
-	TestTcpSvrFunc();
-	//TestUdpSvrFunc();
+	//TestTcpSvrFunc();
+	TestUdpSvrFunc();
 	return 0;
 }
 

@@ -194,8 +194,8 @@ void TestUdpClientFunc()
 
 int _tmain(int argc, _TCHAR* argv[])
 {
-	TestTcpClientFunc();
-	//TestUdpClientFunc();
+	//TestTcpClientFunc();
+	TestUdpClientFunc();
 	system("pause");
 	return 0;
 }

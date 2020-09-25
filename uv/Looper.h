@@ -25,7 +25,7 @@ namespace uv
 		void Close();
 		void PushEvent(UvEvent* _event);
 
-		static void ConnectThread(void* arg);//connect thread,run until use close the client
+		static void WorkThread(void* arg);//connect thread,run until use close the client
 		static void AsyncCB(uv_async_t* handle);
 		static void CloseWalkCB(uv_handle_t* handle, void* arg);//close all handle in loop
 		static void AsyncEvent(uv_async_t* handle);

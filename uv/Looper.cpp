@@ -24,7 +24,7 @@ namespace uv
 			return false;
 		}
 
-		_ret = uv_thread_create(&_thread_handle, ConnectThread, this);//thread to wait for succeed connect.
+		_ret = uv_thread_create(&_thread_handle, WorkThread, this);
 		if (_ret) {
 			_last_error = GetUVError(_ret);
 			return false;
@@ -66,7 +66,7 @@ namespace uv
 		return &_loop;
 	}
 
-	void CLooper::ConnectThread(void* arg)
+	void CLooper::WorkThread(void* arg)
 	{
 		CLooper* theClass = (CLooper*)arg;
 		theClass->_inited = true;

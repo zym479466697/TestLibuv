@@ -6,6 +6,7 @@
 #define NET_PACKAGE_HEADLEN		3*sizeof(uint32_t)
 #define DEF_PACK_HEAD_FLAG			0xD532D532 //协议头标志
 #define PACK_BUFFER_SIZE					(1024*4)
+#define PACK_UDP_SIZE							1400
 
 #pragma pack(push,1) 
 typedef struct PackHeader
