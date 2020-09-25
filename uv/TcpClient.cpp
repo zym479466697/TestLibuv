@@ -38,7 +38,7 @@ CTcpClient::~CTcpClient()
 	FreeTcpClientCtx(_tcp_client_ctx);
 }
 
-bool CTcpClient::Init(CLooper *_lp)
+bool CTcpClient::AttachLooper(CLooper *_lp)
 {
 	_looper = _lp;
 	int iret = uv_tcp_init(_looper->GetLooper(), &_tcp_client_ctx->tcphandle);
@@ -227,6 +227,7 @@ void CTcpClient::closeinl()
 void CTcpClient::sendinl(const char* _buff, int _size)
 {
 	write_param* writep = AllocWriteParam(_size);
+	writep->write_req_.data = this;
 	memcpy((char*)(writep->buf_.base), _buff, _size);
 	//writep->buf_.len = _write_circularbuf.read(writep->buf_.base, writep->buf_.len); 
 	int iret = uv_write((uv_write_t*)&writep->write_req_, (uv_stream_t*)&_tcp_client_ctx->tcphandle, &writep->buf_, 1, AfterSend);

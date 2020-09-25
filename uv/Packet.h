@@ -17,9 +17,6 @@ typedef struct PackHeader
 } NetPacket;
 #pragma pack(pop)
 
-typedef void (*GetFullPacket)(const char* _buff, int _size, void* userdata);
-
-
 enum UV_EVENT_TYPE
 {
 	UV_EVENT_TYPE_CONNECT,
@@ -40,6 +37,7 @@ struct	UvEvent
 	char* _buff;
 	int _size;
 	std::vector<int> _list;
+	struct sockaddr _addr;
 	void* _data;
 };
 
@@ -157,5 +155,24 @@ inline void FreeWriteParam(write_param* param)
 	free(param);
 }
 
+
+typedef struct _send_param{//param of send_udp
+	uv_udp_send_t send_req_;//store udp on data
+	uv_buf_t buf_;
+}send_param;
+
+inline send_param* AllocSendParam(int size)
+{
+	send_param* param = (send_param*)malloc(sizeof(*param));
+	param->buf_.base = (char*)malloc(size);
+	param->buf_.len = size;
+	return param;
+}
+
+inline void FreeSendParam(send_param* param)
+{
+	free(param->buf_.base);
+	free(param);
+}
 
 #endif//PACKET_SYNC_H

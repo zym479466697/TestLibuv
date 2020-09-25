@@ -39,6 +39,9 @@
     <ClInclude Include="..\uv\Looper.h">
       <Filter>uv</Filter>
     </ClInclude>
+    <ClInclude Include="..\uv\Udp.h">
+      <Filter>uv</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">
@@ -51,6 +54,9 @@
       <Filter>uv</Filter>
     </ClCompile>
     <ClCompile Include="..\uv\Looper.cpp">
+      <Filter>uv</Filter>
+    </ClCompile>
+    <ClCompile Include="..\uv\Udp.cpp">
       <Filter>uv</Filter>
     </ClCompile>
   </ItemGroup>

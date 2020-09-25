@@ -33,7 +33,7 @@ public:
     CTcpServer(uint32_t packhead);
     virtual ~CTcpServer();
 public:
-	bool InitLooper(CLooper* looper);
+	bool AttachLooper(CLooper* looper);
 	void OnNewConnectCBEvent(std::function<void(int, void*)> func_new_conn);
 	void OnTcpClientCloseCBEvent(std::function<void(int, void*)> func_tcp_client_close);
 	void OnTcpClientRecvCBEvent(std::function<void(NetPacket*, void*)> func_tcp_client_recv);

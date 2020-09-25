@@ -2,6 +2,7 @@
 //
 #include "stdafx.h"
 #include "TcpClient.h"
+#include "Udp.h"
 #include "Looper.h"
 #include <map>
 
@@ -68,7 +69,7 @@ void SetConsoleColor(unsigned short ForeColor=0, unsigned short BackGroundColor=
 }
 
 int call_time = 0;
-void Func()
+void TestTcpClientFunc()
 {
 	const int clientsize = 3;
 	std::string strServerIp = "127.0.0.1";
@@ -80,7 +81,7 @@ void Func()
 	for (int i = 0; i < clientsize; ++i) {
 		uv::CTcpClient* ptrClient = new uv::CTcpClient(DEF_PACK_HEAD_FLAG);
 		clientMap[ptrClient->GetClientId()] = ptrClient;
-		ptrClient->Init(ptrLooper);
+		ptrClient->AttachLooper(ptrLooper);
 
 		ptrClient->OnConnectCBEvent([](int status, void* userdata){
 			uv::CTcpClient* pClient = (uv::CTcpClient*)userdata;
@@ -151,9 +152,50 @@ void Func()
 	clientMap.clear();
 }
 
+void TestUdpClientFunc()
+{
+	std::string strServerIp = "127.0.0.1";
+	const int port = 6666;
+
+	uv::CLooper* ptrLooper = new uv::CLooper;
+	ptrLooper->InitLooper();
+	uv::CUvUdp* ptrClient = new uv::CUvUdp();
+	ptrClient->AttachLooper(ptrLooper);
+	ptrClient->Bind("127.0.0.1", 3333);
+	ptrClient->OnRecvCBEvent([](const char*_buff, int size, const struct sockaddr* pAddr, unsigned iFlag, void* userdata){
+		uv::CUvUdp* pClient = (uv::CUvUdp*)userdata;
+		char szRecvData[1024] = {0};
+		std::memcpy(szRecvData, _buff, size);
+		LOGI("[RECV] =>---%s",  szRecvData);
+	});
+
+	char senddata[256];
+	int nTry = 500;
+	while (nTry > 0) 
+	{
+		memset(senddata, 0, sizeof(senddata));
+		sprintf(senddata, "%d", ++call_time);
+		if (ptrClient->Send(senddata, strlen(senddata), strServerIp.c_str(), port) <= 0) {
+			LOGI("[ERROR] =>%s",  ptrClient->GetLastErrMsg());
+		} else {
+			LOGI("[SEND] =>+++%s",  senddata);
+		}
+		nTry--;
+		Sleep(10);
+	}
+
+	delete ptrLooper;
+	ptrLooper = nullptr;
+
+	//delete 
+	delete ptrClient;
+	ptrClient = nullptr;
+}
+
 int _tmain(int argc, _TCHAR* argv[])
 {
-	Func();
+	TestTcpClientFunc();
+	//TestUdpClientFunc();
 	system("pause");
 	return 0;
 }

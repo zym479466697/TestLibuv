@@ -36,7 +36,7 @@ public:
 	CTcpClient(uint32_t packhead);
 	virtual ~CTcpClient();
 
-	bool Init(CLooper *_lp);
+	bool AttachLooper(CLooper *_lp);
 	bool Connect(const char* ip, int port, bool isIPv6 = false);
 	void Close();
 	int Send(const char* data, std::size_t len);

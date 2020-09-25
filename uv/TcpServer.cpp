@@ -49,7 +49,7 @@ CTcpServer::~CTcpServer()
     LOGI("tcp server exit.");
 }
 
-bool CTcpServer::InitLooper(CLooper* looper)
+bool CTcpServer::AttachLooper(CLooper* looper)
 {
 	_looper = looper;
 	int _ret = uv_tcp_init(_looper->GetLooper(), &_tcp_server_handle);

@@ -4,6 +4,7 @@
 #include "stdafx.h"
 #include "TcpServer.h"
 #include "Looper.h"
+#include "Udp.h"
 
 #pragma comment(lib, "libuv.lib")
 #pragma comment(lib,"ws2_32.lib")
@@ -57,12 +58,12 @@ bool CtrlHandler(DWORD fdwctrltype)
 	}
 }
 
-int _tmain(int argc, _TCHAR* argv[])
+void TestTcpSvrFunc()
 {
 	uv::CLooper* ptrLooper = new uv::CLooper;
 	ptrLooper->InitLooper();
 	uv::CTcpServer server(DEF_PACK_HEAD_FLAG);
-	server.InitLooper(ptrLooper);
+	server.AttachLooper(ptrLooper);
 
 	server.OnNewConnectCBEvent([](int clientid, void* userdata){
 		uv::CTcpClientSession *theclass = (uv::CTcpClientSession *)userdata;
@@ -76,7 +77,7 @@ int _tmain(int argc, _TCHAR* argv[])
 
 	server.OnTcpClientRecvCBEvent([](NetPacket* pNetPacket, void* userdata){
 		uv::TcpSessionCtx *tcpSessionCtx = (uv::TcpSessionCtx*)userdata;
-		
+
 		char szRecvData[1024] = {0};
 		std::memcpy(szRecvData, pNetPacket->data, pNetPacket->dataSize);
 		LOGI("clientid=%d recv=%s", tcpSessionCtx->clientid, szRecvData);
@@ -94,8 +95,8 @@ int _tmain(int argc, _TCHAR* argv[])
 	if(!server.Start("0.0.0.0", 6666)) {
 		LOGE("Start Server error:%s\n", server.GetLastErrMsg());
 	}
-	server.SetKeepAlive(1, 60);//enable Keepalive, 60s
-	LOGI("server on main.");
+	server.SetKeepAlive(1, 60);
+	LOGI("tcp server on main.");
 
 	if (SetConsoleCtrlHandler((PHANDLER_ROUTINE)CtrlHandler, true))
 	{
@@ -107,9 +108,47 @@ int _tmain(int argc, _TCHAR* argv[])
 		ptrLooper = nullptr;
 		printf("exit \r\n");
 	}
-	//Sleep(10000);
-	//delete ptrLooper;
-	//ptrLooper = nullptr;
+}
+
+void TestUdpSvrFunc()
+{
+	std::string strLocal = "127.0.0.1";
+	const int port = 6666;
+
+	uv::CLooper* ptrLooper = new uv::CLooper;
+	ptrLooper->InitLooper();
+	uv::CUvUdp* ptrSvr = new uv::CUvUdp();
+	ptrSvr->AttachLooper(ptrLooper);
+	ptrSvr->Bind(strLocal.c_str(), port);
+	ptrSvr->OnRecvCBEvent([ptrSvr](const char* buffer, int size, const struct sockaddr* pAddr, unsigned iFlag, void* userdata){
+		uv::CUvUdp* pClient = (uv::CUvUdp*)userdata;
+		char szRecvData[1024] = {0};
+		std::memcpy(szRecvData, buffer, size);
+
+		struct sockaddr_in *sock = ( struct sockaddr_in*)pAddr;
+		int port = ntohs(sock->sin_port);
+		LOGI("[RECV][ip=%s][port=%d] =>---%s",  inet_ntoa(sock->sin_addr), port, szRecvData);
+		ptrSvr->Send(buffer, size, pAddr);
+		LOGI("[SEND_BACK] =>+++%s",  szRecvData);
+	});
+	LOGI("udp server on main.");
+
+	if (SetConsoleCtrlHandler((PHANDLER_ROUTINE)CtrlHandler, true))
+	{
+		while (1) { Sleep(1000); }
+	}
+	else
+	{
+		delete ptrLooper;
+		ptrLooper = nullptr;
+		printf("exit \r\n");
+	}
+}
+
+int _tmain(int argc, _TCHAR* argv[])
+{
+	TestTcpSvrFunc();
+	//TestUdpSvrFunc();
 	return 0;
 }
 
