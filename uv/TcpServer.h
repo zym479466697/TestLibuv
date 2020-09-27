@@ -20,7 +20,7 @@ typedef struct _tcp_session_ctx {
     uv_buf_t read_buf_;
     int clientid;
     void* parent_server;//CTcpServer
-    void* parent_acceptclient;//accept client
+    void* parent_client_session;//accept client
 } TcpSessionCtx;
 
 TcpSessionCtx* AllocTcpSessionCtx(void* parentserver);
@@ -96,27 +96,33 @@ private:
 class CTcpClientSession : ILooperEvent
 {
 public:
-    CTcpClientSession(TcpSessionCtx* control, int clientid, uint32_t packhead, CLooper* loop);
+    CTcpClientSession();
     virtual ~CTcpClientSession();
-    TcpSessionCtx* GetTcpHandle(void) const;
+	bool InitSession(TcpSessionCtx* pSessionCtx, CLooper* loop);
     void Close();
+	void ShutDown();
 	void Send(const char* _buff, int _size);
 
+	int GetClientId();
+	TcpSessionCtx* GetTcpHandle(void) const;
     const char* GetLastErrMsg() const {
         return errmsg_.c_str();
     };
 public:
 	static void AfterClientClose(uv_handle_t* handle);
+	static void AfterShutDown(uv_shutdown_t* req, int status);
 	static void AllocBufferForRecv(uv_handle_t* handle, size_t suggested_size, uv_buf_t* buf);
 	static void AfterRecv(uv_stream_t* client, ssize_t nread, const uv_buf_t* buf);
 	static void AfterSend(uv_write_t* req, int status);
 protected:
+	void closeinl();
+	void shutdowinl();
 	virtual void DoEvent(UvEvent *);
 	virtual void OnHandleClose(uv_handle_t *);
 private:
     CLooper* _looper;
-    TcpSessionCtx* client_handle_;
-	int client_id_;
+    TcpSessionCtx* _client_session_ctx;
+	uv_shutdown_t _tcp_shutdown_req;
     bool isclosed_;
     std::string errmsg_;
 };

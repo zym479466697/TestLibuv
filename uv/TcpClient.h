@@ -31,14 +31,16 @@ public:
 		TCP_STATUS_CONNECTING,
 		TCP_STATUS_CONNECTED,
 		TCP_STATUS_CONNECT_ERROR,
+		TCP_STATUS_CONNECT_TIME_OUT,
 	};
 
 	CTcpClient(uint32_t packhead);
 	virtual ~CTcpClient();
 
 	bool AttachLooper(CLooper *_lp);
-	bool Connect(const char* ip, int port, bool isIPv6 = false);
+	bool Connect(const char* ip, int port, int timeOut = 30, bool isIPv6 = false);
 	void Close();
+	void Shutdown();
 	int Send(const char* data, std::size_t len);
 	bool SetNoDelay(bool enable);
 	bool SetKeepAlive(int enable, unsigned int delay);
@@ -64,13 +66,16 @@ protected:
 
 	void connectinl();
 	void closeinl();
+	void shutdowinl();
 	void sendinl(const char* _buff, int _size);
 
+	static void ConnectTimeOut(uv_timer_t* handle);
 	static void AfterConnect(uv_connect_t* handle, int status);
 	static void AfterRecv(uv_stream_t* client, ssize_t nread, const uv_buf_t* buf);
 	static void AfterSend(uv_write_t* req, int status);
 	static void AllocBufferForRecv(uv_handle_t* handle, size_t suggested_size, uv_buf_t* buf);
 	static void AfterHandleClose(uv_handle_t* handle);
+	static void AfterShutDown(uv_shutdown_t* req, int status);
 private:
 	static int s_base_client_id;
 
@@ -80,11 +85,15 @@ private:
 
 	TcpClientCtx *_tcp_client_ctx;
 	uv_connect_t _connect_req;
+	uv_timer_t _connect_timer;
+	uv_shutdown_t _tcp_shutdown_req;
 	bool _is_ipv6;
 	bool _is_wait_closed;
 	uint32_t _packet_head;
+	uint32_t _conn_time_out;
 	int _connect_status;
 	int _connect_port;
+
 	std::string _connect_ip;
 	std::string errmsg_;
 	CLooper *_looper;

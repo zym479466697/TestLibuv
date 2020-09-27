@@ -71,7 +71,7 @@ void SetConsoleColor(unsigned short ForeColor=0, unsigned short BackGroundColor=
 int call_time = 0;
 void TestTcpClientFunc()
 {
-	const int clientsize = 3;
+	const int clientsize = 5;
 	std::string strServerIp = "127.0.0.1";
 	const int port = 6666;
 
@@ -87,6 +87,9 @@ void TestTcpClientFunc()
 			uv::CTcpClient* pClient = (uv::CTcpClient*)userdata;
 			if(status == uv::CTcpClient::TCP_STATUS_CONNECTED){
 				LOGI("client_id=%d connect succeed.", pClient->GetClientId());
+			}
+			else{
+				LOGI("client_id=%d connect error=%s.", pClient->GetClientId(),  pClient->GetLastErrMsg());
 			}
 		});
 		
@@ -129,15 +132,15 @@ void TestTcpClientFunc()
 		Sleep(10);
 	}
 
-	//close all
-	//for (auto iter = clientMap.begin(), iterEnd = clientMap.end();
-	//	iter != iterEnd; iter++) {
-	//		uv::CTcpClient* pClient = iter->second;
-	//		if(pClient->IsConnected())
-	//		{
-	//			pClient->Close();
-	//		}
-	//}
+	//shutdow all
+	for (auto iter = clientMap.begin(), iterEnd = clientMap.end();
+		iter != iterEnd; iter++) {
+			uv::CTcpClient* pClient = iter->second;
+			if(pClient->IsConnected())
+			{
+				pClient->Shutdown();
+			}
+	}
 
 	delete ptrLooper;
 	ptrLooper = nullptr;
@@ -194,8 +197,8 @@ void TestUdpClientFunc()
 
 int _tmain(int argc, _TCHAR* argv[])
 {
-	//TestTcpClientFunc();
-	TestUdpClientFunc();
+	TestTcpClientFunc();
+	//TestUdpClientFunc();
 	system("pause");
 	return 0;
 }

@@ -71,25 +71,27 @@ void TestTcpSvrFunc()
 	});
 
 	server.OnTcpClientCloseCBEvent([](int clientid, void* userdata){
-		LOGI("cliend %d close", clientid);
+		LOGI("cliend %d closed", clientid);
 		uv::CTcpClientSession *theclass = (uv::CTcpClientSession *)userdata;
 	});
 
 	server.OnTcpClientRecvCBEvent([](NetPacket* pNetPacket, void* userdata){
-		uv::TcpSessionCtx *tcpSessionCtx = (uv::TcpSessionCtx*)userdata;
+		uv::CTcpClientSession *pSession = (uv::CTcpClientSession *)userdata;
 
 		char szRecvData[1024] = {0};
 		std::memcpy(szRecvData, pNetPacket->data, pNetPacket->dataSize);
-		LOGI("clientid=%d recv=%s", tcpSessionCtx->clientid, szRecvData);
+		LOGI("clientid=%d recv=%s", pSession->GetClientId(), szRecvData);
 
 		//send back
-		uv::CTcpClientSession* parent = (uv::CTcpClientSession*)tcpSessionCtx->parent_acceptclient;
 		int pack_size = pNetPacket->dataSize + NET_PACKAGE_HEADLEN;
 		std::string buffer;
 		buffer.resize(pack_size);
 		memcpy(&(buffer[0]), (void*)pNetPacket, NET_PACKAGE_HEADLEN);
 		memcpy(&(buffer[NET_PACKAGE_HEADLEN]), pNetPacket->data, pNetPacket->dataSize);
-		parent->Send((char*)&buffer[0], buffer.size());
+		pSession->Send((char*)&buffer[0], buffer.size());
+		
+		//test shutdown
+		//pSession->ShutDown();
 	});
 
 	if(!server.Start("0.0.0.0", 6666)) {
@@ -147,8 +149,8 @@ void TestUdpSvrFunc()
 
 int _tmain(int argc, _TCHAR* argv[])
 {
-	//TestTcpSvrFunc();
-	TestUdpSvrFunc();
+	TestTcpSvrFunc();
+	//TestUdpSvrFunc();
 	return 0;
 }
 

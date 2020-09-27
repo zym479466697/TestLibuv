@@ -27,6 +27,7 @@ CTcpClient::CTcpClient(uint32_t packhead): _packet_head(packhead)
 	, _connect_status(TCP_STATUS_NONE)
 	, _is_wait_closed(true)
 	, _is_ipv6(false)
+	,_conn_time_out(30)
 {
 	_tcp_client_ctx = AllocTcpClientCtx(this);
 	_tcp_client_ctx->clientid = CTcpClient::s_base_client_id++;
@@ -48,10 +49,19 @@ bool CTcpClient::AttachLooper(CLooper *_lp)
 		return false;
 	}
 
+	iret = uv_timer_init(_looper->GetLooper(), &_connect_timer);
+	if (iret) {
+		errmsg_ = GetUVError(iret);
+		LOGE("%s", errmsg_.c_str());
+		return false;
+	}
+	_connect_timer.data = this;
+	_tcp_shutdown_req.data = this;
+	
 	_tcp_client_ctx->tcphandle.data = this;
 	_tcp_client_ctx->packet_->Init(_packet_head);
-	_tcp_client_ctx->packet_->OnPackageCBEvent([this](const char* _buff, int _size){
 
+	_tcp_client_ctx->packet_->OnPackageCBEvent([this](const char* _buff, int _size){
 		CTcpClient* theClass = (CTcpClient*)_tcp_client_ctx->write_req.data;
 		NetPacket* pNetPacket = (NetPacket*)malloc(_size);
 		std::memcpy(pNetPacket, _buff, _size);
@@ -65,7 +75,7 @@ bool CTcpClient::AttachLooper(CLooper *_lp)
 	return true;
 }
 
-bool CTcpClient::Connect(const char* ip, int port, bool isIPv6)
+bool CTcpClient::Connect(const char* ip, int port,  int timeOut, bool isIPv6)
 {
 	if(_connect_status != TCP_STATUS_NONE 
 		&& _connect_status != TCP_STATUS_CONNECT_ERROR)
@@ -75,7 +85,7 @@ bool CTcpClient::Connect(const char* ip, int port, bool isIPv6)
 
 	if(_is_wait_closed)
 		return false;
-
+	_conn_time_out = timeOut;
 	_connect_ip = ip;
 	_connect_port = port;
 	_is_ipv6 = isIPv6;
@@ -156,6 +166,20 @@ void CTcpClient::Close()
 	}
 }
 
+void CTcpClient::Shutdown()
+{
+	if (_connect_status != TCP_STATUS_CONNECTED 
+		&&  _connect_status !=TCP_STATUS_CONNECTING) {
+			return;
+	}
+
+	if(_looper){
+		UvEvent* pEvent = CreateUvEvent(UV_EVENT_TYPE_SHUTDOWN);
+		pEvent->_data = this;
+		_looper->PushEvent(pEvent);
+	}
+}
+
 void CTcpClient::DoEvent(UvEvent* pEvent)
 {
 	switch(pEvent->type)
@@ -167,6 +191,10 @@ void CTcpClient::DoEvent(UvEvent* pEvent)
 	case UV_EVENT_TYPE_CLOSE:
 		{
 			closeinl();
+		}break;
+	case UV_EVENT_TYPE_SHUTDOWN:
+		{
+			shutdowinl();
 		}break;
 	case UV_EVENT_TYPE_WRITE:
 		{
@@ -206,7 +234,10 @@ void CTcpClient::connectinl()
 	if (iret) {
 		errmsg_ = GetUVError(iret);
 		LOGE("%s", errmsg_.c_str());
+		return;
 	}
+	//start connect time out
+	uv_timer_start(&_connect_timer, ConnectTimeOut, _conn_time_out * 1000, 0);
 }
 
 void CTcpClient::closeinl()
@@ -224,6 +255,12 @@ void CTcpClient::closeinl()
 	}
 }
 
+void CTcpClient::shutdowinl()
+{
+	uv_handle_t* tcp_handle = (uv_handle_t*)&_tcp_client_ctx->tcphandle;
+	uv_shutdown(&_tcp_shutdown_req, (uv_stream_t*)tcp_handle, AfterShutDown);
+}
+
 void CTcpClient::sendinl(const char* _buff, int _size)
 {
 	write_param* writep = AllocWriteParam(_size);
@@ -238,14 +275,38 @@ void CTcpClient::sendinl(const char* _buff, int _size)
 }
 
 
+void CTcpClient::ConnectTimeOut(uv_timer_t* handle)
+{
+	CTcpClient* theClass = (CTcpClient* )handle->data;
+	uv_handle_t* tcp_handle = (uv_handle_t*)&theClass->_tcp_client_ctx->tcphandle;
+	if (!uv_is_closing(tcp_handle)){
+		uv_close(tcp_handle, AfterHandleClose);
+	}
+	uv_close((uv_handle_t*)handle, AfterHandleClose);
+	theClass->errmsg_ = "connect time out";
+	theClass->_connect_status = TCP_STATUS_CONNECT_TIME_OUT;
+	if(theClass->_func_conn_cb)
+		theClass->_func_conn_cb(theClass->_connect_status ,  (void*)theClass);
+}
+
+
 void CTcpClient::AfterConnect(uv_connect_t* handle, int status)
 {
 	CTcpClient* theClass = (CTcpClient*)handle->handle->data;
-	if (status) {
+
+	if (!uv_is_closing((uv_handle_t*)&theClass->_connect_timer)){
+		uv_close((uv_handle_t*)&theClass->_connect_timer, nullptr);
+	}
+
+	if(status == UV_ECANCELED && theClass->_connect_status == TCP_STATUS_CONNECT_TIME_OUT)
+	{
+		// time out callback  in ConnectTimeOut
+		return;
+	}
+	else if (status) {
 		theClass->_connect_status = TCP_STATUS_CONNECT_ERROR;
 		theClass->errmsg_ = GetUVError(status);
-		LOGE("client connect error:%s",  theClass->errmsg_.c_str());
-		//parent->_conn_cb(parent->_connect_status ,  parent->conn_userdata_);
+		//LOGE("client connect error:%s",  theClass->errmsg_.c_str());
 		if(theClass->_func_conn_cb)
 			theClass->_func_conn_cb(theClass->_connect_status ,  (void*)theClass);
 		return;
@@ -253,14 +314,12 @@ void CTcpClient::AfterConnect(uv_connect_t* handle, int status)
 	int iret = uv_read_start(handle->handle, AllocBufferForRecv, AfterRecv);
 	if (iret) {
 		theClass->errmsg_ = GetUVError(status);
-		LOGE("client() uv_read_start error:%s", theClass->errmsg_.c_str());
+		//LOGE("client() uv_read_start error:%s", theClass->errmsg_.c_str());
 		theClass->_connect_status = TCP_STATUS_CONNECT_ERROR;
 	} else {
 		theClass->_connect_status = TCP_STATUS_CONNECTED;
 		//LOGI("clientid=%d connect to server ok", theclass->clientid);
 	}
-	//connect callback
-	//parent->_conn_cb(parent->_connect_status ,  parent->conn_userdata_);
 	if(theClass->_func_conn_cb)
 		theClass->_func_conn_cb(theClass->_connect_status ,  (void*)theClass);
 }
@@ -271,17 +330,17 @@ void CTcpClient::AfterRecv(uv_stream_t* handle, ssize_t nread, const uv_buf_t* b
 	CTcpClient* theClass = (CTcpClient*)handle->data;
 	assert(theClass);
 	if (nread < 0) {
+		//if (nread == UV_EOF) {
+		//	LOGE("Server close(EOF) Client %p\n", handle);
+		//} else if (nread == UV_ECONNRESET) {
+		//	LOGE("Server close(conn reset),Client %p\n", handle);
+		//} else {
+		//	LOGE("Server close,Client %p:%s\n", handle, GetUVError(nread));
+		//}
+		theClass->errmsg_ = GetUVError(nread);
 		theClass->_connect_status = TCP_STATUS_NONE;
-		if(theClass->_func_conn_cb)
-			theClass->_func_conn_cb(theClass->_connect_status ,  (void*)theClass);
-
-		if (nread == UV_EOF) {
-			LOGE("Server close(EOF) Client %p\n", handle);
-		} else if (nread == UV_ECONNRESET) {
-			LOGE("Server close(conn reset),Client %p\n", handle);
-		} else {
-			LOGE("Server close,Client %p:%s\n", handle, GetUVError(nread));
-		}
+		//if(theClass->_func_conn_cb)
+		//	theClass->_func_conn_cb(theClass->_connect_status ,  (void*)theClass);
 		uv_close((uv_handle_t*)handle, AfterHandleClose);//close before reconnect
 		return;
 	}
@@ -309,6 +368,12 @@ void CTcpClient::AllocBufferForRecv(uv_handle_t* handle, size_t suggested_size, 
 	*buf = ptrClientCtx->read_buf_;
 }
 
+void CTcpClient::AfterShutDown(uv_shutdown_t* req, int status)
+{
+	CTcpClient* theClass = (CTcpClient*)req->data;
+	LOGI("clientid=%d shutdown", theClass->GetClientId());
+	theClass->closeinl();
+}
 
 void CTcpClient::AfterHandleClose(uv_handle_t* handle)
 {
